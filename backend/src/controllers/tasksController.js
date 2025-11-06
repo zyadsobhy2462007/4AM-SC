@@ -34,21 +34,27 @@ async function listTasks(req, res) {
 
 async function createTask(req, res) {
   try {
-    const { title, description, week_start } = req.body;
+    const { title, description, week_start, user_id, priority } = req.body;
     const userId = req.userId;
     if (!title) return res.status(400).json({ error: 'title required' });
+    
+    // Use provided user_id if given (for assignment), otherwise use current user's ID
+    const taskUserId = user_id ? Number(user_id) : userId;
+    const taskPriority = priority || 'medium';
+    const assignedBy = user_id ? userId : null; // Set assigned_by if assigning to another user
+    
     if (process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'))) {
-      const result = await dbModule.query('INSERT INTO tasks(user_id,title,description,week_start) VALUES($1,$2,$3,$4) RETURNING id,user_id,title,description,status,week_start,assigned_by,created_at,completed_at', [userId, title, description || null, week_start || null]);
+      const result = await dbModule.query('INSERT INTO tasks(user_id,title,description,week_start,assigned_by,priority) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at', [taskUserId, title, description || null, week_start || null, assignedBy, taskPriority]);
       res.json({ task: result.rows[0] });
     } else if (process.env.MYSQL_URL || (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql://'))) {
-      const info = await dbModule.runAsync('INSERT INTO tasks(user_id,title,description,week_start) VALUES(?,?,?,?)', [userId, title, description || null, week_start || null]);
+      const info = await dbModule.runAsync('INSERT INTO tasks(user_id,title,description,week_start,assigned_by,priority) VALUES(?,?,?,?,?,?)', [taskUserId, title, description || null, week_start || null, assignedBy, taskPriority]);
       const id = info.lastID;
-      const task = await dbModule.getAsync('SELECT id,user_id,title,description,status,week_start,assigned_by,created_at,completed_at FROM tasks WHERE id = ?', [id]);
+      const task = await dbModule.getAsync('SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks WHERE id = ?', [id]);
       res.json({ task });
     } else {
-      const info = await dbModule.runAsync('INSERT INTO tasks(user_id,title,description,week_start) VALUES(?,?,?,?)', [userId, title, description || null, week_start || null]);
+      const info = await dbModule.runAsync('INSERT INTO tasks(user_id,title,description,week_start,assigned_by,priority) VALUES(?,?,?,?,?,?)', [taskUserId, title, description || null, week_start || null, assignedBy, taskPriority]);
       const id = info.lastID;
-      const task = await dbModule.getAsync('SELECT id,user_id,title,description,status,week_start,assigned_by,created_at,completed_at FROM tasks WHERE id = ?', [id]);
+      const task = await dbModule.getAsync('SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks WHERE id = ?', [id]);
       res.json({ task });
     }
   } catch (err) {

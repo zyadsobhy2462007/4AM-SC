@@ -1226,11 +1226,11 @@
                                 id: t.id,
                                 title: t.title,
                                 description: t.description || '',
-                                assignedTo: t.user_id || t.assignedTo || null,
+                                assignedTo: t.user_id ? Number(t.user_id) : (t.assignedTo ? Number(t.assignedTo) : null),
                                 week: this.computeWeekFromDate(t.week_start || t.created_at),
                                 priority: t.priority || 'medium',
                                 status: t.status === 'completed' ? 'completed' : 'active',
-                                createdBy: t.assigned_by || this.currentUser?.id || null,
+                                createdBy: t.assigned_by ? Number(t.assigned_by) : (this.currentUser?.id ? Number(this.currentUser.id) : null),
                                 createdAt: t.created_at,
                                 completedAt: t.completed_at || null
                             }));
@@ -1772,7 +1772,8 @@
                 // Filter by employee
                 const employeeFilter = document.getElementById('adminTaskFilter');
                 if (employeeFilter && employeeFilter.value !== 'all') {
-                    activeTasks = activeTasks.filter(t => t.assignedTo === employeeFilter.value);
+                    const filterUserId = Number(employeeFilter.value);
+                    activeTasks = activeTasks.filter(t => t.assignedTo ? Number(t.assignedTo) === filterUserId : false);
                 }
 
                 // Filter by search term
@@ -1780,8 +1781,10 @@
                 if (searchTerm && searchTerm.value.trim()) {
                     const term = searchTerm.value.trim().toLowerCase();
                     activeTasks =                     activeTasks.filter(t => {
-                        const assignedUser = this.users.find(u => u.id === t.assignedTo || u.id == t.assignedTo);
-                        const createdBy = this.users.find(u => u.id === t.createdBy || u.id == t.createdBy);
+                        const taskAssignedTo = t.assignedTo ? Number(t.assignedTo) : null;
+                        const taskCreatedBy = t.createdBy ? Number(t.createdBy) : null;
+                        const assignedUser = taskAssignedTo ? this.users.find(u => Number(u.id) === taskAssignedTo) : null;
+                        const createdBy = taskCreatedBy ? this.users.find(u => Number(u.id) === taskCreatedBy) : null;
                         
                         const assignedName = assignedUser ? (assignedUser.name || assignedUser.fullName || assignedUser.email || '').toLowerCase() : '';
                         const createdByName = createdBy ? (createdBy.name || createdBy.fullName || createdBy.email || '').toLowerCase() : '';
@@ -1818,10 +1821,13 @@
                 // Count tasks by employee
                 const employeeTaskCounts = {};
                 activeTasks.forEach(task => {
-                    const user = this.users.find(u => u.id === task.assignedTo || u.id == task.assignedTo);
-                    if (user) {
-                        const key = user.name || user.fullName || user.email || 'غير محدد';
-                        employeeTaskCounts[key] = (employeeTaskCounts[key] || 0) + 1;
+                    if (task.assignedTo) {
+                        const taskAssignedTo = Number(task.assignedTo);
+                        const user = this.users.find(u => Number(u.id) === taskAssignedTo);
+                        if (user) {
+                            const key = user.name || user.fullName || user.email || 'غير محدد';
+                            employeeTaskCounts[key] = (employeeTaskCounts[key] || 0) + 1;
+                        }
                     }
                 });
 
@@ -1858,8 +1864,12 @@
             }
 
             createAdminTaskHTML(task) {
-                const assignedUser = this.users.find(u => u.id === task.assignedTo || u.id == task.assignedTo);
-                const createdBy = this.users.find(u => u.id === task.createdBy || u.id == task.createdBy);
+                // Normalize IDs for comparison (handle both string and number IDs)
+                const taskAssignedTo = task.assignedTo ? Number(task.assignedTo) : null;
+                const taskCreatedBy = task.createdBy ? Number(task.createdBy) : null;
+                
+                const assignedUser = taskAssignedTo ? this.users.find(u => Number(u.id) === taskAssignedTo) : null;
+                const createdBy = taskCreatedBy ? this.users.find(u => Number(u.id) === taskCreatedBy) : null;
                 
                 const assignedUserName = assignedUser ? (assignedUser.name || assignedUser.fullName || assignedUser.email || 'غير محدد') : 'غير محدد';
                 const createdByName = createdBy ? (createdBy.name || createdBy.fullName || createdBy.email || 'غير محدد') : 'غير محدد';
@@ -1925,12 +1935,14 @@
                 if (!task) return;
 
                 // Resolve names from local users if still unknown
-                if (assignedUserName === 'غير محدد') {
-                    const assignedUser = this.users.find(u => u.id === task.assignedTo || u.id == task.assignedTo);
+                if (assignedUserName === 'غير محدد' && task.assignedTo) {
+                    const taskAssignedTo = Number(task.assignedTo);
+                    const assignedUser = this.users.find(u => Number(u.id) === taskAssignedTo);
                     if (assignedUser) assignedUserName = assignedUser.name || assignedUser.fullName || assignedUser.email || 'غير محدد';
                 }
-                if (createdByName === 'غير محدد') {
-                    const createdBy = this.users.find(u => u.id === task.createdBy || u.id == task.createdBy);
+                if (createdByName === 'غير محدد' && task.createdBy) {
+                    const taskCreatedBy = Number(task.createdBy);
+                    const createdBy = this.users.find(u => Number(u.id) === taskCreatedBy);
                     if (createdBy) createdByName = createdBy.name || createdBy.fullName || createdBy.email || 'غير محدد';
                 }
 
@@ -2005,7 +2017,7 @@
                             <label for="taskPriority">الأولوية</label>
                             <select id="taskPriority" required>
                                 <option value="low">منخفضة</option>
-                                <option value="medium">متوسطة</option>
+                                <option value="medium" selected>متوسطة</option>
                                 <option value="high">عالية</option>
                             </select>
                         </div>
@@ -2139,17 +2151,33 @@
             }
 
             async createTask(e) {
-                const taskData = {
-                    title: document.getElementById('taskTitle').value,
-                    description: document.getElementById('taskDescription').value
-                };
-
+                const title = document.getElementById('taskTitle').value;
+                const description = document.getElementById('taskDescription').value;
+                const assignTo = document.getElementById('assignTo')?.value;
+                const week = document.getElementById('taskWeek')?.value || 1;
+                const priority = document.getElementById('taskPriority')?.value || 'medium';
+                
                 if (!this.token) {
                     this.showMessage('يجب تسجيل الدخول أولاً', 'error');
                     return;
                 }
 
                 try {
+                    // Calculate week_start from week selection
+                    const week_start = this.getWeekStartDateFromSelection(week);
+                    
+                    const taskData = {
+                        title,
+                        description,
+                        priority,
+                        week_start
+                    };
+                    
+                    // If assigning to another user, include user_id
+                    if (assignTo) {
+                        taskData.user_id = Number(assignTo);
+                    }
+
                     const response = await fetch('/api/tasks', {
                         method: 'POST',
                         headers: {
@@ -2166,25 +2194,11 @@
                         return;
                     }
 
-                    // Add task to local array for UI
-                    const task = {
-                        id: data.task.id,
-                        title: data.task.title,
-                        description: data.task.description,
-                        assignedTo: document.getElementById('assignTo')?.value || null,
-                        week: document.getElementById('taskWeek')?.value || 1,
-                        priority: document.getElementById('taskPriority')?.value || 'medium',
-                        status: 'active',
-                        createdBy: this.currentUser.id,
-                        createdAt: data.task.created_at
-                    };
-
-                    this.tasks.push(task);
-                    this.saveTasks();
+                    // Reload tasks from API to get the correct data from database
+                    await this.loadTasksFromAPI();
                     this.showMessage('تم إنشاء المهمة بنجاح', 'success');
                     this.updateAdminStats();
                     this.loadAdminActiveTasks();
-                    this.loadTasksFromAPI();
                 } catch (error) {
                     console.error('Error creating task:', error);
                     this.showMessage('حدث خطأ أثناء إنشاء المهمة', 'error');
@@ -2542,8 +2556,11 @@
 
             // Common Methods
             createTaskHTML(task, isMyTask = false) {
-                const assignedUser = this.users.find(u => u.id === task.assignedTo || u.id == task.assignedTo);
-                const createdBy = this.users.find(u => u.id === task.createdBy || u.id == task.createdBy);
+                // Normalize IDs for comparison
+                const taskAssignedTo = task.assignedTo ? Number(task.assignedTo) : null;
+                const taskCreatedBy = task.createdBy ? Number(task.createdBy) : null;
+                const assignedUser = taskAssignedTo ? this.users.find(u => Number(u.id) === taskAssignedTo) : null;
+                const createdBy = taskCreatedBy ? this.users.find(u => Number(u.id) === taskCreatedBy) : null;
                 
                 const assignedUserName = assignedUser ? (assignedUser.name || assignedUser.fullName || assignedUser.email || 'غير محدد') : 'غير محدد';
                 const createdByName = createdBy ? (createdBy.name || createdBy.fullName || createdBy.email || 'غير محدد') : 'غير محدد';
