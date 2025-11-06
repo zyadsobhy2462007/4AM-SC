@@ -9,21 +9,45 @@ async function listTasks(req, res) {
 
     if (isPostgres) {
       const params = [userId];
-      let where = 'WHERE user_id = $1';
-      if (week_start) { where += ' AND week_start = $2'; params.push(week_start); }
-      const result = await dbModule.query(`SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks ${where} ORDER BY created_at DESC`, params);
+      let where = 'WHERE t.user_id = $1';
+      if (week_start) { where += ' AND t.week_start = $2'; params.push(week_start); }
+      const result = await dbModule.query(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        ${where} ORDER BY t.created_at DESC
+      `, params);
       res.json({ tasks: result.rows });
     } else if (isMySQL) {
       const params = [userId];
-      let where = 'WHERE user_id = ?';
-      if (week_start) { where += ' AND week_start = ?'; params.push(week_start); }
-      const rows = await dbModule.allAsync(`SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks ${where} ORDER BY created_at DESC`, params);
+      let where = 'WHERE t.user_id = ?';
+      if (week_start) { where += ' AND t.week_start = ?'; params.push(week_start); }
+      const rows = await dbModule.allAsync(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        ${where} ORDER BY t.created_at DESC
+      `, params);
       res.json({ tasks: rows });
     } else {
       const params = [userId];
-      let where = 'WHERE user_id = ?';
-      if (week_start) { where += ' AND week_start = ?'; params.push(week_start); }
-      const rows = await dbModule.allAsync(`SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks ${where} ORDER BY created_at DESC`, params);
+      let where = 'WHERE t.user_id = ?';
+      if (week_start) { where += ' AND t.week_start = ?'; params.push(week_start); }
+      const rows = await dbModule.allAsync(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        ${where} ORDER BY t.created_at DESC
+      `, params);
       res.json({ tasks: rows });
     }
   } catch (err) {
@@ -252,18 +276,22 @@ async function adminListAllTasks(req, res) {
     if (isPostgres) {
       const result = await dbModule.query(`
         SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
-               u.name AS user_name, u.email AS user_email
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
         FROM tasks t
         LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
         ORDER BY t.created_at DESC
       `);
       return res.json({ tasks: result.rows });
     } else {
       const rows = await dbModule.allAsync(`
         SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
-               u.name AS user_name, u.email AS user_email
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
         FROM tasks t
         LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
         ORDER BY t.created_at DESC
       `);
       return res.json({ tasks: rows });
