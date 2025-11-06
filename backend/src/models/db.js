@@ -115,8 +115,28 @@ if (MYSQL_URL || (DATABASE_URL && DATABASE_URL.startsWith('mysql://'))) {
     try { await connection.execute('ALTER TABLE tasks ADD COLUMN week_start DATE NULL'); } catch (e) {}
     try { await connection.execute('ALTER TABLE tasks ADD COLUMN assigned_by INT NULL'); } catch (e) {}
     try { await connection.execute('ALTER TABLE tasks ADD COLUMN priority VARCHAR(20) DEFAULT "medium"'); } catch (e) {}
+    
+    // Create incentives table
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS incentives (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        reason TEXT,
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_incentives_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_incentives_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+    // MySQL migrations: add columns if they don't exist
+    try { await connection.execute('ALTER TABLE incentives ADD COLUMN type VARCHAR(20) NOT NULL'); } catch (e) {}
+    try { await connection.execute('ALTER TABLE incentives ADD COLUMN amount DECIMAL(10,2) NOT NULL'); } catch (e) {}
+    try { await connection.execute('ALTER TABLE incentives ADD COLUMN reason TEXT'); } catch (e) {}
+    try { await connection.execute('ALTER TABLE incentives ADD COLUMN created_by INT NULL'); } catch (e) {}
 
-    console.log('MySQL DB initialized - Users and Tasks tables ensured');
+    console.log('MySQL DB initialized - Users, Tasks, and Incentives tables ensured');
   }
 
   module.exports = { 
@@ -173,6 +193,24 @@ if (MYSQL_URL || (DATABASE_URL && DATABASE_URL.startsWith('mysql://'))) {
     await pool.query(`ALTER TABLE IF EXISTS tasks ADD COLUMN IF NOT EXISTS week_start DATE NULL`);
     await pool.query(`ALTER TABLE IF EXISTS tasks ADD COLUMN IF NOT EXISTS assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL`);
     await pool.query(`ALTER TABLE IF EXISTS tasks ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'medium'`);
+    
+    // Create incentives table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS incentives (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(20) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        reason TEXT,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    // Postgres migrations: add columns if they don't exist
+    await pool.query(`ALTER TABLE IF EXISTS incentives ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL`);
+    await pool.query(`ALTER TABLE IF EXISTS incentives ADD COLUMN IF NOT EXISTS amount DECIMAL(10,2) NOT NULL`);
+    await pool.query(`ALTER TABLE IF EXISTS incentives ADD COLUMN IF NOT EXISTS reason TEXT`);
+    await pool.query(`ALTER TABLE IF EXISTS incentives ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL`);
     
     // Create admin account if it doesn't exist
     try {
@@ -324,6 +362,31 @@ if (MYSQL_URL || (DATABASE_URL && DATABASE_URL.startsWith('mysql://'))) {
     } catch (e) {
       console.log('⚠️ Tasks migration (sqlite):', e.message);
     }
+    
+    // Create incentives table
+    await runAsync(`CREATE TABLE IF NOT EXISTS incentives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      reason TEXT,
+      created_by INTEGER NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
+    );`);
+    // SQLite migrations: add columns if they don't exist
+    try {
+      const incentiveInfo = await allAsync('PRAGMA table_info(incentives)');
+      const icols = incentiveInfo.map(c => c.name);
+      if (!icols.includes('type')) await runAsync('ALTER TABLE incentives ADD COLUMN type TEXT NOT NULL');
+      if (!icols.includes('amount')) await runAsync('ALTER TABLE incentives ADD COLUMN amount REAL NOT NULL');
+      if (!icols.includes('reason')) await runAsync('ALTER TABLE incentives ADD COLUMN reason TEXT');
+      if (!icols.includes('created_by')) await runAsync('ALTER TABLE incentives ADD COLUMN created_by INTEGER NULL');
+    } catch (e) {
+      console.log('⚠️ Incentives migration (sqlite):', e.message);
+    }
+    
     console.log('SQLite DB initialized at', dbPath);
   }
   module.exports = { init, runAsync, allAsync, getAsync };
