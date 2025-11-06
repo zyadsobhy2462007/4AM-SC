@@ -1999,14 +1999,28 @@
                         this.showMessage(j.error || 'فشل حذف المهمة', 'error');
                         return;
                     }
+                    // Remove from local array
+                    const taskIndex = this.tasks.findIndex(t => t.id == taskId);
+                    if (taskIndex !== -1) {
+                        this.tasks.splice(taskIndex, 1);
+                    }
+                    
                     // Refresh tasks from API to sync all views
                     await this.loadTasksFromAPI();
                     this.showMessage('تم حذف المهمة بنجاح', 'success');
-                    this.updateAdminStats();
-                    this.loadAdminActiveTasks();
-                    if (this.currentUser.type === 'employee') {
+                    
+                    const userType = this.currentUser?.type || this.currentUser?.user_type;
+                    if (userType === 'employee') {
                         this.updateEmployeeStats();
                         this.loadWeeklyTasks();
+                    } else if (userType === 'assistant') {
+                        this.updateAssistantStats();
+                        this.loadCreatedTasks();
+                        this.loadAssistantMyTasks();
+                    }
+                    this.updateAdminStats();
+                    if (document.getElementById('adminDashboard') && !document.getElementById('adminDashboard').classList.contains('hidden')) {
+                        this.loadAdminActiveTasks();
                     }
                 } catch (e) {
                     console.error('Delete task error:', e);
@@ -2125,35 +2139,122 @@
                 });
             }
 
-            showReportsModal() {
-                const completedTasks = this.tasks.filter(t => t.status === 'completed').length;
-                const overdueTasks = this.tasks.filter(t => t.status === 'overdue').length;
-                const bonuses = this.incentives.filter(i => i.type === 'bonus').length;
-                const deductions = this.incentives.filter(i => i.type === 'deduction').length;
-                
-                const modal = this.createModal('التقارير والإحصائيات', `
-                    <div class="reports-content">
-                        <h3>إحصائيات الأداء</h3>
-                        <div class="report-stats">
-                            <div class="report-item">
-                                <span>إجمالي المهام المكتملة:</span>
-                                <strong>${completedTasks}</strong>
+            async showReportsModal() {
+                if (!this.token) {
+                    this.showMessage('يجب تسجيل الدخول أولاً', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/reports', {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        this.showMessage(errorData.error || 'فشل تحميل التقارير', 'error');
+                        return;
+                    }
+
+                    const data = await response.json();
+                    const { tasks, incentives, employeePerformance } = data;
+
+                    let employeePerformanceHTML = '';
+                    if (employeePerformance && employeePerformance.length > 0) {
+                        employeePerformanceHTML = `
+                            <h3 style="margin-top: 30px; margin-bottom: 15px;">أداء الموظفين</h3>
+                            <div class="employee-performance-table" style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                                    <thead>
+                                        <tr style="background: rgba(0, 212, 255, 0.1);">
+                                            <th style="padding: 12px; text-align: right; border: 1px solid rgba(0, 212, 255, 0.3);">الموظف</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">إجمالي المهام</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">مكتملة</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">قيد الانتظار</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">نسبة الإنجاز</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">إجمالي الحوافز</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">إجمالي الخصومات</th>
+                                            <th style="padding: 12px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.3);">صافي الحوافز</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${employeePerformance.map(emp => `
+                                            <tr>
+                                                <td style="padding: 10px; border: 1px solid rgba(0, 212, 255, 0.2);">${emp.name || emp.email}</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2);">${emp.totalTasks}</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2); color: #28a745;">${emp.completedTasks}</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2); color: #ffc107;">${emp.pendingTasks}</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2);">${emp.completionRate}%</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2); color: #28a745;">+${emp.totalBonuses.toFixed(2)}</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2); color: #ff4757;">-${emp.totalDeductions.toFixed(2)}</td>
+                                                <td style="padding: 10px; text-align: center; border: 1px solid rgba(0, 212, 255, 0.2); font-weight: bold; color: ${emp.netIncentives >= 0 ? '#28a745' : '#ff4757'};">${emp.netIncentives >= 0 ? '+' : ''}${emp.netIncentives.toFixed(2)}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
                             </div>
-                            <div class="report-item">
-                                <span>المهام المتأخرة:</span>
-                                <strong>${overdueTasks}</strong>
+                        `;
+                    }
+
+                    const modal = this.createModal('التقارير والإحصائيات', `
+                        <div class="reports-content">
+                            <h3>إحصائيات الأداء</h3>
+                            <div class="report-stats">
+                                <div class="report-item">
+                                    <span>إجمالي المهام:</span>
+                                    <strong>${tasks.total || 0}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>المهام المكتملة:</span>
+                                    <strong style="color: #28a745;">${tasks.completed || 0}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>المهام قيد الانتظار:</span>
+                                    <strong style="color: #ffc107;">${tasks.pending || 0}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>قيد التنفيذ:</span>
+                                    <strong style="color: #00d4ff;">${tasks.inProgress || 0}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>المهام المتأخرة:</span>
+                                    <strong style="color: #ff4757;">${tasks.overdue || 0}</strong>
+                                </div>
                             </div>
-                            <div class="report-item">
-                                <span>إجمالي الحوافز:</span>
-                                <strong>${bonuses}</strong>
+                            
+                            <h3 style="margin-top: 30px; margin-bottom: 15px;">الحوافز والخصومات</h3>
+                            <div class="report-stats">
+                                <div class="report-item">
+                                    <span>عدد الحوافز:</span>
+                                    <strong style="color: #28a745;">${incentives.bonuses.count || 0}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>إجمالي الحوافز:</span>
+                                    <strong style="color: #28a745;">${(incentives.bonuses.total || 0).toFixed(2)}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>عدد الخصومات:</span>
+                                    <strong style="color: #ff4757;">${incentives.deductions.count || 0}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>إجمالي الخصومات:</span>
+                                    <strong style="color: #ff4757;">${(incentives.deductions.total || 0).toFixed(2)}</strong>
+                                </div>
+                                <div class="report-item">
+                                    <span>صافي الحوافز:</span>
+                                    <strong style="color: ${(incentives.net || 0) >= 0 ? '#28a745' : '#ff4757'}; font-size: 1.2em;">${(incentives.net || 0) >= 0 ? '+' : ''}${(incentives.net || 0).toFixed(2)}</strong>
+                                </div>
                             </div>
-                            <div class="report-item">
-                                <span>إجمالي الخصومات:</span>
-                                <strong>${deductions}</strong>
-                            </div>
+                            
+                            ${employeePerformanceHTML}
                         </div>
-                    </div>
-                `);
+                    `);
+                } catch (error) {
+                    console.error('Error loading reports:', error);
+                    this.showMessage('حدث خطأ أثناء تحميل التقارير', 'error');
+                }
             }
 
             async showUsersModal() {
@@ -2282,7 +2383,8 @@
             }
             // Assistant Dashboard Methods
             updateAssistantStats() {
-                const createdTasks = this.tasks.filter(t => t.createdBy == this.currentUser.id);
+                const currentUserId = Number(this.currentUser?.id || this.currentUser?.user_id);
+                const createdTasks = this.tasks.filter(t => t.createdBy == currentUserId);
                 const assignedEmployees = new Set(createdTasks.map(t => t.assignedTo)).size;
                 const completedTasks = createdTasks.filter(t => t.status === 'completed');
 
@@ -2292,7 +2394,8 @@
             }
 
             loadCreatedTasks() {
-                const createdTasks = this.tasks.filter(t => t.createdBy === this.currentUser.id);
+                const currentUserId = Number(this.currentUser?.id || this.currentUser?.user_id);
+                const createdTasks = this.tasks.filter(t => t.createdBy == currentUserId);
                 const tasksList = document.getElementById('createdTasksList');
 
                 if (createdTasks.length === 0) {
@@ -2304,7 +2407,8 @@
             }
 
             loadAssistantMyTasks() {
-                const myTasks = this.tasks.filter(t => t.assignedTo == this.currentUser.id);
+                const currentUserId = Number(this.currentUser?.id || this.currentUser?.user_id);
+                const myTasks = this.tasks.filter(t => t.assignedTo == currentUserId);
                 const myTasksList = document.getElementById('assistantMyTasksList');
 
                 if (myTasks.length === 0) {
@@ -2510,7 +2614,32 @@
                         this.showMessage(j.error || 'فشل تحديث الحالة', 'error');
                         return;
                     }
+                    
+                    const data = await resp.json();
+                    const updatedTask = data.task;
+                    
+                    // Update the task in local array immediately
+                    const taskIndex = this.tasks.findIndex(t => t.id == taskId);
+                    if (taskIndex !== -1 && updatedTask) {
+                        this.tasks[taskIndex] = {
+                            id: updatedTask.id,
+                            title: updatedTask.title,
+                            description: updatedTask.description || '',
+                            assignedTo: updatedTask.user_id ? Number(updatedTask.user_id) : null,
+                            assignedToName: updatedTask.user_name || updatedTask.user_email || 'غير محدد',
+                            week: this.computeWeekFromDate(updatedTask.week_start || updatedTask.created_at),
+                            priority: updatedTask.priority || 'medium',
+                            status: updatedTask.status === 'completed' ? 'completed' : (updatedTask.status === 'in_progress' ? 'in_progress' : 'active'),
+                            createdBy: updatedTask.assigned_by ? Number(updatedTask.assigned_by) : null,
+                            createdByName: updatedTask.assigned_by_name || updatedTask.assigned_by_email || 'غير محدد',
+                            createdAt: updatedTask.created_at,
+                            completedAt: updatedTask.completed_at || null
+                        };
+                    }
+                    
+                    // Reload from API to ensure consistency
                     await this.loadTasksFromAPI();
+                    
                     const userType = this.currentUser?.type || this.currentUser?.user_type;
                     if (userType === 'employee') {
                         this.updateEmployeeStats();
@@ -2518,12 +2647,13 @@
                     } else if (userType === 'assistant') {
                         this.updateAssistantStats();
                         this.loadAssistantMyTasks();
+                        this.loadCreatedTasks();
                     }
                     this.updateAdminStats();
                     if (document.getElementById('adminDashboard') && !document.getElementById('adminDashboard').classList.contains('hidden')) {
                         this.loadAdminActiveTasks();
                     }
-                    this.showMessage('تم تحديث حالة المهمة', 'success');
+                    this.showMessage('تم تحديث حالة المهمة بنجاح', 'success');
                 } catch (e) {
                     console.error('Update status error:', e);
                     this.showMessage('حدث خطأ أثناء تحديث الحالة', 'error');

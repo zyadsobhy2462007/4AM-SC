@@ -9,6 +9,7 @@ const db = require('./models/db');
 const authRoutes = require('./routes/auth');
 const tasksRoutes = require('./routes/tasks');
 const incentivesRoutes = require('./routes/incentives');
+const reportsRoutes = require('./routes/reports');
 
 const app = express();
 // Configure Helmet to allow inline scripts (needed for language selection)
@@ -35,6 +36,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/incentives', incentivesRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Serve frontend static files
 const publicDir = path.join(__dirname, 'public');

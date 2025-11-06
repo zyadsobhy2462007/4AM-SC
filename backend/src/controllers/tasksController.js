@@ -106,8 +106,9 @@ async function assignTaskToUser(req, res) {
     } else {
       currentUser = await dbModule.getAsync('SELECT user_type FROM users WHERE id = ?', [adminId]);
     }
-    if (!currentUser || currentUser.user_type !== 'admin') {
-      return res.status(403).json({ error: 'forbidden - admin access required' });
+    // Allow both admin and assistant to assign tasks
+    if (!currentUser || (currentUser.user_type !== 'admin' && currentUser.user_type !== 'assistant')) {
+      return res.status(403).json({ error: 'forbidden - admin or assistant access required' });
     }
 
     const taskPriority = priority || 'medium';
@@ -401,26 +402,43 @@ async function updateTaskStatus(req, res) {
       task = await dbModule.getAsync('SELECT id,user_id FROM tasks WHERE id = ?', [id]);
     }
     if (!task) return res.status(404).json({ error: 'not found' });
-    // Check if requester is admin or the owner
-    let isAdmin = false;
+    // Check if requester is admin, assistant, or the owner
+    let userType = null;
     if (isPostgres) {
       const result = await dbModule.query('SELECT user_type FROM users WHERE id = $1', [requesterId]);
-      isAdmin = (result.rows[0] && result.rows[0].user_type === 'admin');
+      userType = result.rows[0]?.user_type;
     } else {
       const u = await dbModule.getAsync('SELECT user_type FROM users WHERE id = ?', [requesterId]);
-      isAdmin = !!u && u.user_type === 'admin';
+      userType = u?.user_type;
     }
-    if (!isAdmin && task.user_id !== Number(requesterId)) {
+    const isAdminOrAssistant = userType === 'admin' || userType === 'assistant';
+    if (!isAdminOrAssistant && task.user_id !== Number(requesterId)) {
       return res.status(403).json({ error: 'forbidden' });
     }
     const lower = status.toLowerCase();
     if (isPostgres) {
       await dbModule.query('UPDATE tasks SET status = $1, completed_at = CASE WHEN $1 = $2 THEN NOW() ELSE NULL END WHERE id = $3', [lower, 'completed', id]);
-      const r = await dbModule.query('SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks WHERE id = $1', [id]);
+      const r = await dbModule.query(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        WHERE t.id = $1
+      `, [id]);
       return res.json({ task: r.rows[0] });
     } else if (isMySQL) {
       await dbModule.runAsync('UPDATE tasks SET status = ?, completed_at = CASE WHEN ? = "completed" THEN NOW() ELSE NULL END WHERE id = ?', [lower, lower, id]);
-      const row = await dbModule.getAsync('SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks WHERE id = ?', [id]);
+      const row = await dbModule.getAsync(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        WHERE t.id = ?
+      `, [id]);
       return res.json({ task: row });
     } else {
       // sqlite lacks CASE with NOW(); use CURRENT_TIMESTAMP
@@ -429,7 +447,15 @@ async function updateTaskStatus(req, res) {
       } else {
         await dbModule.runAsync('UPDATE tasks SET status = ?, completed_at = NULL WHERE id = ?', [lower, id]);
       }
-      const row = await dbModule.getAsync('SELECT id,user_id,title,description,status,week_start,assigned_by,priority,created_at,completed_at FROM tasks WHERE id = ?', [id]);
+      const row = await dbModule.getAsync(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        WHERE t.id = ?
+      `, [id]);
       return res.json({ task: row });
     }
   } catch (err) {
