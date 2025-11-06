@@ -1207,14 +1207,19 @@
             async loadTasksFromAPI() {
                 if (this.token) {
                     try {
-                        const response = await fetch('/api/tasks', {
+                        // Use /api/tasks/all for admins/assistants to see all tasks
+                        // Use /api/tasks for employees to see only their assigned tasks
+                        const userType = this.currentUser?.type || this.currentUser?.user_type || 'employee';
+                        const endpoint = (userType === 'admin' || userType === 'assistant') ? '/api/tasks/all' : '/api/tasks';
+                        
+                        const response = await fetch(endpoint, {
                             headers: {
                                 'Authorization': `Bearer ${this.token}`
                             }
                         });
                         if (response.ok) {
                             const data = await response.json();
-                            console.log('API /api/tasks returned', (data.tasks||[]).length, 'tasks');
+                            console.log(`API ${endpoint} returned`, (data.tasks||[]).length, 'tasks');
                             const apiTasks = data.tasks || [];
                             // Map API tasks (DB shape) -> UI shape
                             this.tasks = apiTasks.map(t => ({
@@ -2282,10 +2287,6 @@
             }
 
             async showCreateEmployeeTaskModal(selectedEmployeeId = null, selectedEmployeeName = null) {
-                // Store employee info for reopening employee page after task creation
-                this.pendingEmployeePageId = selectedEmployeeId;
-                this.pendingEmployeePageName = selectedEmployeeName;
-                
                 // Show modal with loading employees
                 const modal = this.createModal('إنشاء مهمة للموظفين', `
                     <form id="createEmployeeTaskForm">
@@ -2297,22 +2298,12 @@
                             <label for="empTaskDescription">وصف المهمة</label>
                             <textarea id="empTaskDescription" rows="4" required></textarea>
                         </div>
-                        ${selectedEmployeeId && selectedEmployeeName ? `
-                        <div class="input-group">
-                            <label>الموظف المسؤول</label>
-                            <div style="padding: 10px; background: rgba(0, 212, 255, 0.1); border-radius: 5px; color: #00d4ff; font-weight: 600;">
-                                ${selectedEmployeeName}
-                            </div>
-                            <input type="hidden" id="empAssignTo" value="${selectedEmployeeId}">
-                        </div>
-                        ` : `
                         <div class="input-group">
                             <label for="empAssignTo">تعيين إلى الموظف</label>
                             <select id="empAssignTo" required>
                                 <option value="">جاري تحميل الموظفين...</option>
                             </select>
                         </div>
-                        `}
                         <div class="input-group">
                             <label for="empTaskWeek">الأسبوع</label>
                             <select id="empTaskWeek" required>
@@ -2334,26 +2325,28 @@
                     </form>
                 `);
 
-                // Load employees and populate dropdown only if not pre-selected
-                if (!selectedEmployeeId) {
-                    try {
-                        const employeeOptions = await this.getEmployeeOptions();
-                        const empAssignToSelect = document.getElementById('empAssignTo');
-                        if (empAssignToSelect) {
-                            empAssignToSelect.innerHTML = '<option value="">اختر الموظف</option>' + employeeOptions;
+                // Load employees and populate dropdown
+                try {
+                    const employeeOptions = await this.getEmployeeOptions();
+                    const empAssignToSelect = document.getElementById('empAssignTo');
+                    if (empAssignToSelect) {
+                        empAssignToSelect.innerHTML = '<option value="">اختر الموظف</option>' + employeeOptions;
+                        // Pre-select the employee if provided
+                        if (selectedEmployeeId) {
+                            empAssignToSelect.value = selectedEmployeeId;
                         }
-                    } catch (error) {
-                        console.error('Error loading employee options:', error);
-                        const empAssignToSelect = document.getElementById('empAssignTo');
-                        if (empAssignToSelect) {
-                            empAssignToSelect.innerHTML = '<option value="">حدث خطأ أثناء تحميل الموظفين</option>';
-                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading employee options:', error);
+                    const empAssignToSelect = document.getElementById('empAssignTo');
+                    if (empAssignToSelect) {
+                        empAssignToSelect.innerHTML = '<option value="">حدث خطأ أثناء تحميل الموظفين</option>';
                     }
                 }
 
                 document.getElementById('createEmployeeTaskForm').addEventListener('submit', (e) => {
                     e.preventDefault();
-                    this.createEmployeeTask(e, selectedEmployeeId, selectedEmployeeName);
+                    this.createEmployeeTask(e);
                     this.closeModal(modal);
                 });
             }
