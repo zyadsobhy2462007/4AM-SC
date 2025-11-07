@@ -464,4 +464,116 @@ async function updateTaskStatus(req, res) {
   }
 }
 
-module.exports = { listTasks, createTask, assignTaskToUser, completeTask, getTaskAnalytics, adminListAllTasks, getTaskDetails, deleteTask, updateTaskStatus };
+// Update task details (title, description, week_start, priority, assigned user)
+async function updateTask(req, res) {
+  try {
+    const requesterId = req.userId;
+    const { id } = req.params;
+    const { title, description, week_start, priority, user_id } = req.body;
+
+    const isPostgres = process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'));
+    const isMySQL = process.env.MYSQL_URL || (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql://'));
+
+    // Load task
+    let task;
+    if (isPostgres) {
+      const t = await dbModule.query('SELECT id,user_id FROM tasks WHERE id = $1', [id]);
+      task = t.rows[0];
+    } else {
+      task = await dbModule.getAsync('SELECT id,user_id FROM tasks WHERE id = ?', [id]);
+    }
+    if (!task) return res.status(404).json({ error: 'not found' });
+
+    // Check permission: admin or assistant can edit any; owner can edit own
+    let userType = null;
+    if (isPostgres) {
+      const result = await dbModule.query('SELECT user_type FROM users WHERE id = $1', [requesterId]);
+      userType = result.rows[0]?.user_type;
+    } else {
+      const u = await dbModule.getAsync('SELECT user_type FROM users WHERE id = ?', [requesterId]);
+      userType = u?.user_type;
+    }
+    const isAdminOrAssistant = userType === 'admin' || userType === 'assistant';
+    if (!isAdminOrAssistant && task.user_id !== Number(requesterId)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    // Build dynamic update
+    const newPriority = priority || null;
+    const newWeekStart = week_start || null;
+    const newTitle = typeof title === 'string' ? title : null;
+    const newDescription = typeof description === 'string' ? description : null;
+    const newUserId = user_id !== undefined ? Number(user_id) : null;
+
+    if (isPostgres) {
+      const fields = [];
+      const params = [];
+      let idx = 1;
+      if (newTitle !== null) { fields.push(`title = $${idx++}`); params.push(newTitle); }
+      if (newDescription !== null) { fields.push(`description = $${idx++}`); params.push(newDescription); }
+      if (newWeekStart !== null) { fields.push(`week_start = $${idx++}`); params.push(newWeekStart); }
+      if (newPriority !== null) { fields.push(`priority = $${idx++}`); params.push(newPriority); }
+      if (newUserId !== null) { fields.push(`user_id = $${idx++}`); params.push(newUserId); }
+      if (fields.length === 0) return res.status(400).json({ error: 'no fields to update' });
+      params.push(id);
+      await dbModule.query(`UPDATE tasks SET ${fields.join(', ')} WHERE id = $${idx}`, params);
+      const r = await dbModule.query(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        WHERE t.id = $1
+      `, [id]);
+      return res.json({ task: r.rows[0] });
+    } else if (isMySQL) {
+      const sets = [];
+      const params = [];
+      if (newTitle !== null) { sets.push('title = ?'); params.push(newTitle); }
+      if (newDescription !== null) { sets.push('description = ?'); params.push(newDescription); }
+      if (newWeekStart !== null) { sets.push('week_start = ?'); params.push(newWeekStart); }
+      if (newPriority !== null) { sets.push('priority = ?'); params.push(newPriority); }
+      if (newUserId !== null) { sets.push('user_id = ?'); params.push(newUserId); }
+      if (sets.length === 0) return res.status(400).json({ error: 'no fields to update' });
+      params.push(id);
+      await dbModule.runAsync(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`, params);
+      const row = await dbModule.getAsync(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        WHERE t.id = ?
+      `, [id]);
+      return res.json({ task: row });
+    } else {
+      const sets = [];
+      const params = [];
+      if (newTitle !== null) { sets.push('title = ?'); params.push(newTitle); }
+      if (newDescription !== null) { sets.push('description = ?'); params.push(newDescription); }
+      if (newWeekStart !== null) { sets.push('week_start = ?'); params.push(newWeekStart); }
+      if (newPriority !== null) { sets.push('priority = ?'); params.push(newPriority); }
+      if (newUserId !== null) { sets.push('user_id = ?'); params.push(newUserId); }
+      if (sets.length === 0) return res.status(400).json({ error: 'no fields to update' });
+      params.push(id);
+      await dbModule.runAsync(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`, params);
+      const row = await dbModule.getAsync(`
+        SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
+               u.name AS user_name, u.email AS user_email,
+               a.name AS assigned_by_name, a.email AS assigned_by_email
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN users a ON a.id = t.assigned_by
+        WHERE t.id = ?
+      `, [id]);
+      return res.json({ task: row });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'server error' });
+  }
+}
+
+module.exports = { listTasks, createTask, assignTaskToUser, completeTask, getTaskAnalytics, adminListAllTasks, getTaskDetails, deleteTask, updateTaskStatus, updateTask };
