@@ -1263,6 +1263,7 @@
                         amount: Number(i.amount) || 0,
                         reason: i.reason || '',
                         createdBy: i.created_by ? Number(i.created_by) : null,
+                        createdByName: i.created_by_name || i.created_by_email || '',
                         createdAt: i.created_at
                     }));
                 } catch (e) {
@@ -2834,8 +2835,11 @@
             }
 
             createIncentiveHTML(incentive) {
-                const createdBy = this.users.find(u => u.id === incentive.createdBy || u.id == incentive.createdBy);
-                const createdByName = createdBy ? (createdBy.name || createdBy.fullName || createdBy.email || 'غير محدد') : 'غير محدد';
+                let createdByName = incentive.createdByName || '';
+                if (!createdByName) {
+                    const createdBy = this.users.find(u => u.id === incentive.createdBy || u.id == incentive.createdBy);
+                    createdByName = createdBy ? (createdBy.name || createdBy.fullName || createdBy.email || 'غير محدد') : 'غير محدد';
+                }
                 const isBonus = incentive.type === 'bonus';
 
                 return `
