@@ -7,10 +7,26 @@ async function listTasks(req, res) {
     const isPostgres = process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'));
     const isMySQL = process.env.MYSQL_URL || (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql://'));
 
+    // Determine requester role
+    let userType = 'employee';
+    if (isPostgres) {
+      const result = await dbModule.query('SELECT user_type FROM users WHERE id = $1', [userId]);
+      userType = result.rows[0]?.user_type || 'employee';
+    } else {
+      const row = await dbModule.getAsync('SELECT user_type FROM users WHERE id = ?', [userId]);
+      userType = row?.user_type || 'employee';
+    }
+
     if (isPostgres) {
       const params = [userId];
       let where = 'WHERE t.user_id = $1';
-      if (week_start) { where += ' AND t.week_start = $2'; params.push(week_start); }
+      if (userType === 'assistant') {
+        where = 'WHERE (t.user_id = $1 OR t.assigned_by = $1)';
+      }
+      if (week_start) {
+        params.push(week_start);
+        where += ` AND t.week_start = $${params.length}`;
+      }
       const result = await dbModule.query(`
         SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
                u.name AS user_name, u.email AS user_email,
@@ -24,7 +40,14 @@ async function listTasks(req, res) {
     } else if (isMySQL) {
       const params = [userId];
       let where = 'WHERE t.user_id = ?';
-      if (week_start) { where += ' AND t.week_start = ?'; params.push(week_start); }
+      if (userType === 'assistant') {
+        where = 'WHERE (t.user_id = ? OR t.assigned_by = ?)';
+        params.push(userId);
+      }
+      if (week_start) {
+        params.push(week_start);
+        where += ' AND t.week_start = ?';
+      }
       const rows = await dbModule.allAsync(`
         SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
                u.name AS user_name, u.email AS user_email,
@@ -38,7 +61,14 @@ async function listTasks(req, res) {
     } else {
       const params = [userId];
       let where = 'WHERE t.user_id = ?';
-      if (week_start) { where += ' AND t.week_start = ?'; params.push(week_start); }
+      if (userType === 'assistant') {
+        where = 'WHERE (t.user_id = ? OR t.assigned_by = ?)';
+        params.push(userId);
+      }
+      if (week_start) {
+        params.push(week_start);
+        where += ' AND t.week_start = ?';
+      }
       const rows = await dbModule.allAsync(`
         SELECT t.id, t.user_id, t.title, t.description, t.status, t.week_start, t.assigned_by, t.priority, t.created_at, t.completed_at,
                u.name AS user_name, u.email AS user_email,
