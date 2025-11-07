@@ -238,4 +238,68 @@ async function getUserStats(req, res) {
   }
 }
 
-module.exports = { register, login, me, getAllUsers, getUserStats };
+async function deleteUser(req, res) {
+  try {
+    const requesterId = req.userId;
+    const { id } = req.params;
+    const targetId = Number(id);
+    if (!targetId || Number.isNaN(targetId)) {
+      return res.status(400).json({ error: 'invalid user id' });
+    }
+
+    const isMySQL = process.env.MYSQL_URL || (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('mysql://'));
+    const isPostgres = process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://'));
+
+    // Ensure requester is admin
+    let requester;
+    if (isMySQL) {
+      requester = await dbModule.getAsync('SELECT user_type FROM users WHERE id = ?', [requesterId]);
+    } else if (isPostgres) {
+      const result = await dbModule.query('SELECT user_type FROM users WHERE id = $1', [requesterId]);
+      requester = result.rows[0];
+    } else {
+      requester = await dbModule.getAsync('SELECT user_type FROM users WHERE id = ?', [requesterId]);
+    }
+
+    if (!requester || requester.user_type !== 'admin') {
+      return res.status(403).json({ error: 'forbidden - admin access required' });
+    }
+
+    if (targetId === Number(requesterId)) {
+      return res.status(400).json({ error: 'cannot delete your own account' });
+    }
+
+    // Ensure target exists and is not an admin
+    let targetUser;
+    if (isMySQL) {
+      targetUser = await dbModule.getAsync('SELECT id, user_type FROM users WHERE id = ?', [targetId]);
+    } else if (isPostgres) {
+      const result = await dbModule.query('SELECT id, user_type FROM users WHERE id = $1', [targetId]);
+      targetUser = result.rows[0];
+    } else {
+      targetUser = await dbModule.getAsync('SELECT id, user_type FROM users WHERE id = ?', [targetId]);
+    }
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'user not found' });
+    }
+
+    if (targetUser.user_type === 'admin') {
+      return res.status(400).json({ error: 'cannot delete admin accounts' });
+    }
+
+    if (isPostgres) {
+      await dbModule.query('DELETE FROM users WHERE id = $1', [targetId]);
+    } else {
+      await dbModule.runAsync('DELETE FROM users WHERE id = ?', [targetId]);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ error: 'server error', details: process.env.NODE_ENV === 'development' ? err.message : undefined });
+  }
+}
+
+module.exports = { register, login, me, getAllUsers, getUserStats, deleteUser };

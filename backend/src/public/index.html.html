@@ -2984,20 +2984,93 @@
             async getUsersList() {
                 // Fetch users from API first
                 const users = await this.fetchUsersFromAPI();
+                const currentType = this.currentUser?.user_type || this.currentUser?.type || 'employee';
+                const canDelete = currentType === 'admin';
                 return users
                     .filter(u => (u.user_type || u.type) !== 'admin')
                     .map(u => {
                         const name = u.name || u.fullName || u.email;
+                        const jsSafeName = (name || '').replace(/'/g, "\\'");
+                        const safeName = this.escapeHtml(name || '');
+                        const safeEmail = this.escapeHtml(u.email || '');
                         const type = u.user_type || u.type || 'employee';
+                        const roleLabel = type === 'assistant' ? 'مساعد' : (this.getDepartmentName(u.department || '') || '');
+                        const safeRole = this.escapeHtml(roleLabel);
+                        const deleteButton = canDelete ? `
+                            <button class="btn btn-danger" style="padding:6px 12px; margin-left:10px;" onclick="event.stopPropagation(); system.confirmDeleteUser(${u.id}, '${jsSafeName}')">
+                                <i class="fas fa-trash"></i> حذف
+                            </button>
+                        ` : '';
                         return `
-                            <div class="user-item" data-user-id="${u.id}" data-user-name="${name}" style="cursor: pointer;" onclick="app.showEmployeePage(${u.id}, '${name.replace(/'/g, "\\'")}')">
-                                <span>${name}</span>
-                                <span>${u.email}</span>
-                                <span>${type === 'employee' ? this.getDepartmentName(u.department || '') : 'مساعد'}</span>
+                            <div class="user-item" data-user-id="${u.id}" style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; border-bottom:1px solid rgba(255,255,255,0.1); border-radius:8px; background:rgba(255,255,255,0.02);">
+                                <div class="user-details" style="flex:1; cursor:pointer;" onclick="system.showEmployeePage(${u.id}, '${jsSafeName}')">
+                                    <span style="display:block; font-weight:600;">${safeName}</span>
+                                    <span style="display:block; font-size:0.9em; color:#ccc;">${safeEmail}</span>
+                                    <span style="display:block; font-size:0.85em; color:#999;">${safeRole}</span>
+                                </div>
+                                ${deleteButton}
                             </div>
                         `;
                     })
                     .join('');
+            }
+
+            escapeHtml(value) {
+                if (value === null || value === undefined) return '';
+                return String(value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            async confirmDeleteUser(userId, userName) {
+                if (!this.token) {
+                    this.showMessage('غير مصرح', 'error');
+                    return;
+                }
+
+                const currentType = this.currentUser?.user_type || this.currentUser?.type || 'employee';
+                if (currentType !== 'admin') {
+                    this.showMessage('فقط المدير يمكنه حذف المستخدمين', 'error');
+                    return;
+                }
+
+                const confirmed = confirm(`هل أنت متأكد من حذف المستخدم ${userName}؟ سيتم حذف جميع المهام والحوافز المرتبطة به.`);
+                if (!confirmed) return;
+
+                try {
+                    const resp = await fetch(`/api/auth/users/${userId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`
+                        }
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok) {
+                        this.showMessage(data.error || 'فشل حذف المستخدم', 'error');
+                        return;
+                    }
+
+                    await this.fetchUsersFromAPI();
+                    await this.loadTasksFromAPI();
+                    this.updateAdminStats();
+                    this.loadEmployeeFilterOptions();
+                    if (typeof this.loadAdminActiveTasks === 'function') {
+                        this.loadAdminActiveTasks();
+                    }
+
+                    const listContainer = document.getElementById('usersListContent');
+                    if (listContainer) {
+                        listContainer.innerHTML = await this.getUsersList();
+                    }
+
+                    this.showMessage('تم حذف المستخدم بنجاح', 'success');
+                } catch (error) {
+                    console.error('Delete user error:', error);
+                    this.showMessage('حدث خطأ أثناء حذف المستخدم', 'error');
+                }
             }
 
             getDepartmentName(department) {
@@ -3093,6 +3166,8 @@
         let system;
         document.addEventListener('DOMContentLoaded', () => {
             system = new FourAMCompleteSystem();
+            window.system = system;
+            window.app = system;
         });
     </script>
 </body>
