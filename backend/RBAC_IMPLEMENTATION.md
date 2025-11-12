@@ -226,3 +226,4 @@ If you get 403 Forbidden errors:
 2. Check that your user has the required role in the database
 3. Ensure you're using the correct endpoint for your role level
 
+

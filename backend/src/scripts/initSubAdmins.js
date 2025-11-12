@@ -1,8 +1,5 @@
 require('dotenv').config();
-const bcrypt = require('bcrypt');
 const { connectMongoDB, Admin } = require('../models/mongodb');
-
-const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
 
 async function initSubAdmins() {
   try {
@@ -38,17 +35,16 @@ async function initSubAdmins() {
     if (subAdmin1) {
       console.log(`⚠️  Sub-admin 1 (${subAdmin1Email}) already exists. Updating...`);
       subAdmin1.name = subAdmin1Name;
-      subAdmin1.password = await bcrypt.hash(subAdmin1Password, SALT_ROUNDS);
+      subAdmin1.password = subAdmin1Password; // Will be hashed by pre-save hook
       subAdmin1.role = 'sub_admin';
       subAdmin1.parentAdminId = mainAdmin._id;
       await subAdmin1.save();
       console.log(`✅ Updated sub-admin 1: ${subAdmin1Name}`);
     } else {
-      const subAdmin1PasswordHash = await bcrypt.hash(subAdmin1Password, SALT_ROUNDS);
       subAdmin1 = new Admin({
         name: subAdmin1Name,
         email: subAdmin1Email,
-        password: subAdmin1PasswordHash,
+        password: subAdmin1Password, // Will be hashed by pre-save hook
         role: 'sub_admin',
         parentAdminId: mainAdmin._id
       });
@@ -65,17 +61,16 @@ async function initSubAdmins() {
     if (subAdmin2) {
       console.log(`⚠️  Sub-admin 2 (${subAdmin2Email}) already exists. Updating...`);
       subAdmin2.name = subAdmin2Name;
-      subAdmin2.password = await bcrypt.hash(subAdmin2Password, SALT_ROUNDS);
+      subAdmin2.password = subAdmin2Password; // Will be hashed by pre-save hook
       subAdmin2.role = 'sub_admin';
       subAdmin2.parentAdminId = mainAdmin._id;
       await subAdmin2.save();
       console.log(`✅ Updated sub-admin 2: ${subAdmin2Name}`);
     } else {
-      const subAdmin2PasswordHash = await bcrypt.hash(subAdmin2Password, SALT_ROUNDS);
       subAdmin2 = new Admin({
         name: subAdmin2Name,
         email: subAdmin2Email,
-        password: subAdmin2PasswordHash,
+        password: subAdmin2Password, // Will be hashed by pre-save hook
         role: 'sub_admin',
         parentAdminId: mainAdmin._id
       });

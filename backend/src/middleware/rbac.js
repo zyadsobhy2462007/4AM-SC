@@ -62,6 +62,20 @@ function requireRole(allowedRoles) {
 }
 
 /**
+ * Middleware to require main_admin role
+ */
+function requireMainAdmin(req, res, next) {
+  return requireRole('main_admin')(req, res, next);
+}
+
+/**
+ * Middleware to require sub_admin role
+ */
+function requireSubAdmin(req, res, next) {
+  return requireRole('sub_admin')(req, res, next);
+}
+
+/**
  * Middleware to check if user is main admin or sub-admin under a specific main admin
  */
 async function requireMainAdminOrSubAdmin(req, res, next) {
@@ -132,8 +146,65 @@ async function preventSubAdminAccessToMainAdmin(req, res, next) {
   }
 }
 
+/**
+ * Middleware to enforce sub-admin access restrictions
+ * - Sub-admins can only access their own resources
+ * - Main admins can access any sub-admin resources
+ */
+async function enforceSubAdminAccess(req, res, next) {
+  try {
+    const currentAdmin = await Admin.findById(req.userId).select('role parentAdminId');
+    
+    if (!currentAdmin) {
+      return res.status(401).json({ error: 'user not found' });
+    }
+
+    // Attach to request for use in controllers
+    req.userRole = currentAdmin.role;
+    req.userParentAdminId = currentAdmin.parentAdminId;
+
+    // If sub-admin, they can only access their own resources
+    if (currentAdmin.role === 'sub_admin') {
+      const targetId = req.params.id || req.body.id || req.body.userId;
+      
+      if (targetId && targetId !== req.userId.toString()) {
+        // Check if target is a sub-admin under the same parent
+        const targetAdmin = await Admin.findById(targetId).select('role parentAdminId');
+        
+        if (!targetAdmin) {
+          return res.status(404).json({ error: 'target not found' });
+        }
+
+        // Sub-admin cannot access main admin
+        if (targetAdmin.role === 'main_admin') {
+          return res.status(403).json({ 
+            error: 'forbidden - sub-admins cannot access main admin resources' 
+          });
+        }
+
+        // Sub-admin can only access sub-admins under the same parent
+        if (targetAdmin.role === 'sub_admin') {
+          if (targetAdmin.parentAdminId?.toString() !== currentAdmin.parentAdminId?.toString()) {
+            return res.status(403).json({ 
+              error: 'forbidden - can only access sub-admins under the same parent admin' 
+            });
+          }
+        }
+      }
+    }
+
+    next();
+  } catch (err) {
+    console.error('Enforce sub-admin access error:', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+}
+
 module.exports = {
   requireRole,
+  requireMainAdmin,
+  requireSubAdmin,
   requireMainAdminOrSubAdmin,
-  preventSubAdminAccessToMainAdmin
+  preventSubAdminAccessToMainAdmin,
+  enforceSubAdminAccess
 };
