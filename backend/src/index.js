@@ -6,7 +6,15 @@ const helmet = require('helmet');
 
 const db = require('./models/db');
 
+// Check if MongoDB is being used
+const MONGODB_URI = process.env.MONGODB_URI || process.env.DATABASE_URL;
+const isMongoDB = MONGODB_URI && (
+  MONGODB_URI.startsWith('mongodb://') || 
+  MONGODB_URI.startsWith('mongodb+srv://')
+);
+
 const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
 const tasksRoutes = require('./routes/tasks');
 const incentivesRoutes = require('./routes/incentives');
 const reportsRoutes = require('./routes/reports');
@@ -34,6 +42,7 @@ app.use(express.json());
 
 // API
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/incentives', incentivesRoutes);
 app.use('/api/reports', reportsRoutes);
@@ -63,12 +72,28 @@ app.get('*', (req, res, next) => {
 
 const PORT = process.env.PORT || 4000;
 
-db.init().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
-}).catch(err => {
-  console.error('Failed to initialize DB', err);
-  process.exit(1);
-});
+async function initializeServer() {
+  try {
+    if (isMongoDB) {
+      // Initialize MongoDB
+      const { initMongoDB } = require('./models/mongodb');
+      await initMongoDB();
+      console.log('✅ MongoDB initialized');
+    } else {
+      // Initialize SQL database
+      await db.init();
+      console.log('✅ SQL database initialized');
+    }
+    
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`Database: ${isMongoDB ? 'MongoDB' : 'SQL'}`);
+    });
+  } catch (err) {
+    console.error('Failed to initialize DB', err);
+    process.exit(1);
+  }
+}
+
+initializeServer();
