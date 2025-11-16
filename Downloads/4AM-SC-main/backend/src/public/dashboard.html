@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Dashboard</title><link rel="stylesheet" href="/main.css"/><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/></head>
+<body>
+  <div class="header">
+    <div id="welcome">Welcome</div>
+    <div><button id="btn-logout" class="btn">Logout</button></div>
+  </div>
+  <div class="container">
+    <div class="card">
+      <h3 id="card-title">Your tasks</h3>
+      <div style="margin-bottom:8px">
+        <label>Week start: <input type="date" id="filter-week-start" /></label>
+        <button id="btn-filter" class="btn">Filter</button>
+      </div>
+      <div id="tasks-list"></div>
+      <div style="margin-top:12px">
+        <input id="task-title" placeholder="Task title" />
+        <input id="task-desc" placeholder="Task description" />
+        <input id="task-week" type="date" placeholder="Week start (Mon)" />
+        <button id="btn-add" class="btn">Add Task</button>
+      </div>
+    </div>
+    <div class="card" id="admin-assign-card" style="display:none">
+      <h3>Admin - Assign Task</h3>
+      <div style="margin-bottom:8px">
+        <select id="assign-user"></select>
+      </div>
+      <div>
+        <input id="assign-title" placeholder="Task title" />
+        <input id="assign-desc" placeholder="Task description" />
+        <input id="assign-week" type="date" placeholder="Week start (Mon)" />
+        <button id="btn-assign" class="btn">Assign</button>
+      </div>
+      <div style="margin-top:12px">
+        <button id="btn-analytics" class="btn">Load Analytics (week)</button>
+        <pre id="analytics-box" style="white-space:pre-wrap"></pre>
+      </div>
+    </div>
+  </div>
+
+<script src="/lang.js"></script>
+<script>
+  const lang = localStorage.getItem('site_lang') || 'en';
+  const L = LANG[lang] || LANG.en;
+  document.getElementById('welcome').innerText = L.welcome + ', ' + (localStorage.getItem('user_name') || '');
+  document.getElementById('btn-logout').innerText = L.logout;
+  document.getElementById('card-title').innerText = L.welcome + ' - Tasks';
+
+  const token = localStorage.getItem('token');
+  if (!token) location.href = '/login.html';
+
+  let currentUser = null;
+
+  async function loadMe(){
+    const res = await fetch('/api/auth/me', { headers:{ Authorization: 'Bearer ' + token }});
+    if (!res.ok) return null;
+    const j = await res.json();
+    return j.user;
+  }
+
+  async function loadTasks(){
+    const week = document.getElementById('filter-week-start').value;
+    const qs = week ? ('?week_start=' + encodeURIComponent(week)) : '';
+    const res = await fetch('/api/tasks' + qs, {headers:{Authorization: 'Bearer ' + token}});
+    if (!res.ok) { if (res.status === 401) { alert('Session expired'); localStorage.removeItem('token'); location.href='/login.html'; } return; }
+    const j = await res.json();
+    const list = document.getElementById('tasks-list');
+    list.innerHTML = '';
+    j.tasks.forEach(t => {
+      const row = document.createElement('div');
+      const info = document.createElement('span');
+      const week = t.week_start ? (' [Week: ' + t.week_start + ']') : '';
+      info.innerText = (t.status === 'completed' ? '✅ ' : '⬜ ') + t.title + (t.description ? ' — ' + t.description : '') + week;
+      row.appendChild(info);
+      if (t.status !== 'completed') {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.marginLeft = '8px';
+        btn.innerText = 'Complete';
+        btn.addEventListener('click', async () => {
+          const r = await fetch('/api/tasks/' + t.id + '/complete', { method: 'PATCH', headers:{ Authorization: 'Bearer ' + token }});
+          if (r.ok) loadTasks();
+        });
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
+    });
+  }
+  document.getElementById('btn-add').addEventListener('click', async ()=>{
+    const title = document.getElementById('task-title').value;
+    const desc = document.getElementById('task-desc').value;
+    const week = document.getElementById('task-week').value || null;
+    const res = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json', Authorization: 'Bearer ' + token}, body:JSON.stringify({title, description: desc, week_start: week})});
+    if (!res.ok) { alert('Failed'); return; }
+    document.getElementById('task-title').value=''; document.getElementById('task-desc').value=''; document.getElementById('task-week').value='';
+    await loadTasks();
+  });
+
+  document.getElementById('btn-filter').addEventListener('click', loadTasks);
+
+  async function maybeInitAdmin(){
+    currentUser = await loadMe();
+    if (!currentUser) return;
+    if (currentUser.user_type === 'admin') {
+      document.getElementById('admin-assign-card').style.display = '';
+      const usersRes = await fetch('/api/auth/users', { headers:{ Authorization: 'Bearer ' + token }});
+      if (usersRes.ok) {
+        const ujson = await usersRes.json();
+        const sel = document.getElementById('assign-user');
+        sel.innerHTML = '';
+        ujson.users.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.id; opt.text = (u.name || u.email) + (u.user_type ? (' (' + u.user_type + ')') : '');
+          sel.appendChild(opt);
+        });
+      }
+    }
+  }
+
+  document.getElementById('btn-assign')?.addEventListener('click', async () => {
+    const user_id = document.getElementById('assign-user').value;
+    const title = document.getElementById('assign-title').value;
+    const description = document.getElementById('assign-desc').value;
+    const week_start = document.getElementById('assign-week').value || null;
+    const res = await fetch('/api/tasks/assign', { method:'POST', headers:{ 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ user_id: Number(user_id), title, description, week_start }) });
+    if (!res.ok) { alert('Failed to assign'); return; }
+    document.getElementById('assign-title').value=''; document.getElementById('assign-desc').value=''; document.getElementById('assign-week').value='';
+    await loadTasks();
+  });
+
+  document.getElementById('btn-analytics')?.addEventListener('click', async () => {
+    const week_start = document.getElementById('assign-week').value || document.getElementById('filter-week-start').value || '';
+    const qs = week_start ? ('?week_start=' + encodeURIComponent(week_start)) : '';
+    const res = await fetch('/api/tasks/analytics' + qs, { headers:{ Authorization: 'Bearer ' + token }});
+    if (!res.ok) { alert('Failed to load analytics'); return; }
+    const j = await res.json();
+    document.getElementById('analytics-box').innerText = JSON.stringify(j, null, 2);
+  });
+
+  document.getElementById('btn-logout').addEventListener('click', ()=>{
+    localStorage.removeItem('token'); localStorage.removeItem('user_name'); location.href='/login.html';
+  });
+
+  maybeInitAdmin().then(loadTasks);
+</script>
+</body>
+</html>

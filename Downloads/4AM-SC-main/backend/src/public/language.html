@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Choose Language</title>
+<link rel="stylesheet" href="/main.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/>
+</head>
+<body>
+  <div class="lang-container">
+    <h1 id="title">Choose your language</h1>
+    <div class="lang-buttons">
+      <button id="btn-ar" class="lang-btn">العربية</button>
+      <button id="btn-en" class="lang-btn">English</button>
+    </div>
+  </div>
+<script src="/lang.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const defaultTitle = "Choose your language / اختر اللغة";
+    const saved = localStorage.getItem('site_lang');
+    if (saved) {
+      window.location.href = '/login.html';
+      return;
+    }
+    function setLang(l) {
+      localStorage.setItem('site_lang', l);
+      window.location.href = '/login.html';
+    }
+    document.getElementById('btn-ar').addEventListener('click', function() {
+      setLang('ar');
+    });
+    document.getElementById('btn-en').addEventListener('click', function() {
+      setLang('en');
+    });
+    document.getElementById('title').innerText = defaultTitle;
+  });
+</script>
+</body>
+</html>
