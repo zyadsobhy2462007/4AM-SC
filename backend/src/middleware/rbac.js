@@ -165,17 +165,17 @@ async function enforceSubAdminAccess(req, res, next) {
 
     // If sub-admin, they can only access their own resources
     if (currentAdmin.role === 'sub_admin') {
-      const targetId = req.params.id || req.body.id || req.body.userId;
+      const targetId = req.params.id || req.body.id || req.body.userId || req.body.parentAdminId;
       
       if (targetId && targetId !== req.userId.toString()) {
-        // Check if target is a sub-admin under the same parent
+        // Check if target is a main admin or sub-admin
         const targetAdmin = await Admin.findById(targetId).select('role parentAdminId');
         
         if (!targetAdmin) {
           return res.status(404).json({ error: 'target not found' });
         }
 
-        // Sub-admin cannot access main admin
+        // Sub-admin cannot access main admin in any way
         if (targetAdmin.role === 'main_admin') {
           return res.status(403).json({ 
             error: 'forbidden - sub-admins cannot access main admin resources' 
@@ -200,11 +200,67 @@ async function enforceSubAdminAccess(req, res, next) {
   }
 }
 
+/**
+ * Helper function to check if sub-admin is trying to access main admin
+ * Can be used in controllers to prevent sub-admins from sending messages/tasks to main admin
+ */
+async function preventSubAdminMainAdminInteraction(req, res, next) {
+  try {
+    const currentAdmin = await Admin.findById(req.userId).select('role parentAdminId');
+    
+    if (!currentAdmin) {
+      return res.status(401).json({ error: 'user not found' });
+    }
+
+    // If current user is a sub-admin, check if they're trying to interact with main admin
+    if (currentAdmin.role === 'sub_admin') {
+      // Check various places where a target admin ID might be specified
+      const targetIds = [
+        req.params.id,
+        req.body.id,
+        req.body.userId,
+        req.body.adminId,
+        req.body.assignedTo,
+        req.body.recipientId,
+        req.body.targetAdminId
+      ].filter(Boolean);
+
+      for (const targetId of targetIds) {
+        if (targetId) {
+          const targetAdmin = await Admin.findById(targetId).select('role');
+          
+          if (targetAdmin && targetAdmin.role === 'main_admin') {
+            return res.status(403).json({ 
+              error: 'forbidden - sub-admins cannot send messages or tasks to main admin' 
+            });
+          }
+        }
+      }
+
+      // Also check if trying to set parentAdminId to a main admin
+      if (req.body.parentAdminId) {
+        const parentAdmin = await Admin.findById(req.body.parentAdminId).select('role');
+        if (parentAdmin && parentAdmin.role === 'main_admin' && parentAdmin._id.toString() !== currentAdmin.parentAdminId?.toString()) {
+          return res.status(403).json({ 
+            error: 'forbidden - sub-admins cannot change their parent admin' 
+          });
+        }
+      }
+    }
+
+    next();
+  } catch (err) {
+    console.error('Prevent sub-admin main admin interaction error:', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+}
+
 module.exports = {
   requireRole,
   requireMainAdmin,
   requireSubAdmin,
   requireMainAdminOrSubAdmin,
   preventSubAdminAccessToMainAdmin,
-  enforceSubAdminAccess
+  enforceSubAdminAccess,
+  preventSubAdminMainAdminInteraction
 };

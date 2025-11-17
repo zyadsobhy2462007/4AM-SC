@@ -66,7 +66,7 @@ async function getAdminProfile(req, res) {
 }
 
 /**
- * Get all sub-admins (main admin only)
+ * Get all sub-admins (main admin can see all, sub-admin can only see siblings)
  */
 async function getAllSubAdmins(req, res) {
   try {
@@ -79,10 +79,11 @@ async function getAllSubAdmins(req, res) {
     let query = {};
     
     if (admin.role === 'main_admin') {
-      // Main admin can see all sub-admins
+      // Main admin can see all sub-admins (but not other main admins)
       query = { role: 'sub_admin' };
     } else if (admin.role === 'sub_admin') {
-      // Sub-admin can only see sub-admins with the same parent
+      // Sub-admin can only see sub-admins with the same parent (siblings)
+      // They cannot see the main admin
       query = { 
         role: 'sub_admin',
         parentAdminId: admin.parentAdminId 
@@ -93,10 +94,13 @@ async function getAllSubAdmins(req, res) {
     
     const subAdmins = await Admin.find(query)
       .select('-password')
-      .populate('parentAdminId', 'name email')
+      .populate('parentAdminId', 'name email role')
       .sort({ createdAt: -1 });
     
-    res.json({ subAdmins });
+    // Ensure no main admin is returned (extra safety check)
+    const filteredSubAdmins = subAdmins.filter(sa => sa.role === 'sub_admin');
+    
+    res.json({ subAdmins: filteredSubAdmins });
   } catch (error) {
     console.error('Get all sub-admins error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -156,7 +160,7 @@ async function createSubAdmin(req, res) {
 }
 
 /**
- * Update sub-admin (main admin only, or sub-admin updating themselves)
+ * Update sub-admin (main admin can update any sub-admin, sub-admin can only update themselves)
  */
 async function updateSubAdmin(req, res) {
   try {
@@ -181,6 +185,11 @@ async function updateSubAdmin(req, res) {
         return res.status(403).json({ error: 'Forbidden - Sub-admins can only update their own profile' });
       }
       
+      // Sub-admin cannot update main admin (extra safety check)
+      if (targetAdmin.role === 'main_admin') {
+        return res.status(403).json({ error: 'Forbidden - Sub-admins cannot update main admin' });
+      }
+      
       // Sub-admin cannot change their role or parent
       if (name) targetAdmin.name = name;
       if (email) targetAdmin.email = email.toLowerCase();
@@ -201,6 +210,7 @@ async function updateSubAdmin(req, res) {
     
     // Main admin can update any sub-admin
     if (currentAdmin.role === 'main_admin') {
+      // Main admin cannot update another main admin
       if (targetAdmin.role === 'main_admin') {
         return res.status(403).json({ error: 'Cannot update main admin' });
       }
