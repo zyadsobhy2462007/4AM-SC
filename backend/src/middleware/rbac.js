@@ -39,8 +39,11 @@ function requireRole(allowedRoles) {
       // Normalize allowedRoles to array
       const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
 
+      // Managers have the same permissions as main_admin
+      const effectiveRole = admin.role === 'manager' ? 'main_admin' : admin.role;
+
       // Check if user has required role
-      if (!roles.includes(admin.role)) {
+      if (!roles.includes(admin.role) && !roles.includes(effectiveRole)) {
         return res.status(403).json({ 
           error: 'forbidden - insufficient permissions',
           required: roles,
@@ -62,10 +65,10 @@ function requireRole(allowedRoles) {
 }
 
 /**
- * Middleware to require main_admin role
+ * Middleware to require main_admin role (managers also have this permission)
  */
 function requireMainAdmin(req, res, next) {
-  return requireRole('main_admin')(req, res, next);
+  return requireRole(['main_admin', 'manager'])(req, res, next);
 }
 
 /**
@@ -105,7 +108,8 @@ async function requireMainAdminOrSubAdmin(req, res, next) {
       return res.status(401).json({ error: 'user not found' });
     }
 
-    if (admin.role !== 'main_admin' && admin.role !== 'sub_admin') {
+    // Managers have the same permissions as main_admin
+    if (admin.role !== 'main_admin' && admin.role !== 'sub_admin' && admin.role !== 'manager') {
       return res.status(403).json({ error: 'forbidden - admin access required' });
     }
 
@@ -163,6 +167,7 @@ async function enforceSubAdminAccess(req, res, next) {
     req.userRole = currentAdmin.role;
     req.userParentAdminId = currentAdmin.parentAdminId;
 
+    // Managers have full access like main_admin, so skip restrictions for managers
     // If sub-admin, they can only access their own resources
     if (currentAdmin.role === 'sub_admin') {
       const targetId = req.params.id || req.body.id || req.body.userId || req.body.parentAdminId;
@@ -213,6 +218,7 @@ async function preventSubAdminMainAdminInteraction(req, res, next) {
     }
 
     // If current user is a sub-admin, check if they're trying to interact with main admin
+    // Managers can interact with anyone, so skip this check for managers
     if (currentAdmin.role === 'sub_admin') {
       // Check various places where a target admin ID might be specified
       const targetIds = [

@@ -78,8 +78,8 @@ async function getAllSubAdmins(req, res) {
     
     let query = {};
     
-    if (admin.role === 'main_admin') {
-      // Main admin can see all sub-admins (but not other main admins)
+    if (admin.role === 'main_admin' || admin.role === 'manager') {
+      // Main admin and managers can see all sub-admins (but not other main admins/managers)
       query = { role: 'sub_admin' };
     } else if (admin.role === 'sub_admin') {
       // Sub-admin can only see sub-admins with the same parent (siblings)
@@ -120,8 +120,8 @@ async function createSubAdmin(req, res) {
     
     const mainAdmin = await Admin.findById(req.userId);
     
-    if (!mainAdmin || mainAdmin.role !== 'main_admin') {
-      return res.status(403).json({ error: 'Forbidden - Only main admin can create sub-admins' });
+    if (!mainAdmin || (mainAdmin.role !== 'main_admin' && mainAdmin.role !== 'manager')) {
+      return res.status(403).json({ error: 'Forbidden - Only main admin or manager can create sub-admins' });
     }
     
     // Check if email already exists
@@ -208,11 +208,11 @@ async function updateSubAdmin(req, res) {
       });
     }
     
-    // Main admin can update any sub-admin
-    if (currentAdmin.role === 'main_admin') {
-      // Main admin cannot update another main admin
-      if (targetAdmin.role === 'main_admin') {
-        return res.status(403).json({ error: 'Cannot update main admin' });
+    // Main admin and managers can update any sub-admin
+    if (currentAdmin.role === 'main_admin' || currentAdmin.role === 'manager') {
+      // Cannot update another main admin or manager
+      if (targetAdmin.role === 'main_admin' || targetAdmin.role === 'manager') {
+        return res.status(403).json({ error: 'Cannot update main admin or manager' });
       }
       
       if (name) targetAdmin.name = name;
@@ -252,8 +252,8 @@ async function deleteSubAdmin(req, res) {
     
     const currentAdmin = await Admin.findById(req.userId);
     
-    if (!currentAdmin || currentAdmin.role !== 'main_admin') {
-      return res.status(403).json({ error: 'Forbidden - Only main admin can delete sub-admins' });
+    if (!currentAdmin || (currentAdmin.role !== 'main_admin' && currentAdmin.role !== 'manager')) {
+      return res.status(403).json({ error: 'Forbidden - Only main admin or manager can delete sub-admins' });
     }
     
     if (currentAdmin._id.toString() === id) {
@@ -266,8 +266,8 @@ async function deleteSubAdmin(req, res) {
       return res.status(404).json({ error: 'Sub-admin not found' });
     }
     
-    if (targetAdmin.role === 'main_admin') {
-      return res.status(403).json({ error: 'Cannot delete main admin' });
+    if (targetAdmin.role === 'main_admin' || targetAdmin.role === 'manager') {
+      return res.status(403).json({ error: 'Cannot delete main admin or manager' });
     }
     
     await Admin.findByIdAndDelete(id);
@@ -279,12 +279,37 @@ async function deleteSubAdmin(req, res) {
   }
 }
 
+/**
+ * Get all managers (for task assignment dropdown)
+ */
+async function getAllManagers(req, res) {
+  try {
+    const currentAdmin = await Admin.findById(req.userId);
+    
+    if (!currentAdmin) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+    
+    // Only main_admin, manager, or sub_admin can see managers
+    // (sub-admins might need to see managers for task assignment)
+    const managers = await Admin.find({ role: 'manager' })
+      .select('-password')
+      .sort({ name: 1 });
+    
+    res.json({ managers });
+  } catch (error) {
+    console.error('Get all managers error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+}
+
 module.exports = {
   adminLogin,
   getAdminProfile,
   getAllSubAdmins,
   createSubAdmin,
   updateSubAdmin,
-  deleteSubAdmin
+  deleteSubAdmin,
+  getAllManagers
 };
 

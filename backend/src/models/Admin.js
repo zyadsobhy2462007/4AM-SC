@@ -19,7 +19,7 @@ const adminSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['main_admin', 'sub_admin'],
+    enum: ['main_admin', 'sub_admin', 'manager'],
     default: 'sub_admin'
   },
   parentAdminId: {

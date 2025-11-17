@@ -2424,6 +2424,40 @@
                 }
 
                 try {
+                    // Check if assigning to a manager (value starts with "manager_")
+                    if (assignTo && assignTo.startsWith('manager_')) {
+                        // Extract manager ID
+                        const managerId = assignTo.replace('manager_', '');
+                        const week_start = this.getWeekStartDateFromSelection(week);
+                        
+                        // Use MongoDB task assignment endpoint for managers
+                        const response = await fetch('/api/admin/tasks/assign', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${this.token}`
+                            },
+                            body: JSON.stringify({
+                                assignedTo: managerId,
+                                title,
+                                description,
+                                week_start: week_start ? week_start.toISOString().split('T')[0] : null,
+                                priority
+                            })
+                        });
+
+                        const data = await response.json();
+                        if (!response.ok) {
+                            this.showMessage(data.error || 'فشل تعيين المهمة', 'error');
+                            return;
+                        }
+
+                        this.showMessage('تم تعيين المهمة بنجاح', 'success');
+                        await this.loadTasks();
+                        return;
+                    }
+                    
+                    // Regular user task assignment (SQL)
                     // Calculate week_start from week selection
                     const week_start = this.getWeekStartDateFromSelection(week);
                     
@@ -2957,7 +2991,32 @@
             async getUserOptions() {
                 // Fetch users from API first
                 const users = await this.fetchUsersFromAPI();
-                return users
+                
+                // Also fetch managers for manager-to-manager task assignment
+                let managerOptions = '';
+                try {
+                    const managersResponse = await fetch('/api/admin/managers', {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (managersResponse.ok) {
+                        const managersData = await managersResponse.json();
+                        const managers = managersData.managers || [];
+                        managerOptions = managers
+                            .map(m => {
+                                const name = m.name || m.email;
+                                return `<option value="manager_${m.id}" data-manager-id="${m.id}">${name} (مدير)</option>`;
+                            })
+                            .join('');
+                    }
+                } catch (error) {
+                    console.error('Error fetching managers:', error);
+                }
+                
+                const userOptions = users
                     .filter(u => (u.user_type || u.type) !== 'admin')
                     .map(u => {
                         const name = u.name || u.fullName || u.email;
@@ -2966,6 +3025,8 @@
                         return `<option value="${u.id}">${name}${type === 'employee' && dept ? ' (' + this.getDepartmentName(dept) + ')' : type === 'assistant' ? ' (مساعد)' : ''}</option>`;
                     })
                     .join('');
+                
+                return userOptions + managerOptions;
             }
 
             async getEmployeeOptions() {

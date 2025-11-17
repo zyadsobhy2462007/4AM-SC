@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "init-sub-admins": "node src/scripts/initSubAdmins.js"
+    "init-sub-admins": "node src/scripts/initSubAdmins.js",
+    "init-managers": "node src/scripts/initManagers.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.0",

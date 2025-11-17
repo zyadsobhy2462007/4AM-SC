@@ -160,9 +160,9 @@ async function getAllAdmins(req, res) {
     const currentUserId = req.userId;
     const currentUserRole = req.userRole;
 
-    // Only main_admin can see all admins
-    if (currentUserRole !== 'main_admin') {
-      return res.status(403).json({ error: 'forbidden - main admin access required' });
+    // Only main_admin and managers can see all admins
+    if (currentUserRole !== 'main_admin' && currentUserRole !== 'manager') {
+      return res.status(403).json({ error: 'forbidden - main admin or manager access required' });
     }
 
     // Get all admins
@@ -185,9 +185,9 @@ async function getSubAdmins(req, res) {
     const currentUserId = req.userId;
     const currentUserRole = req.userRole;
 
-    // Main admin can see all sub-admins
+    // Main admin and managers can see all sub-admins
     // Sub-admin can only see themselves
-    if (currentUserRole === 'main_admin') {
+    if (currentUserRole === 'main_admin' || currentUserRole === 'manager') {
       const subAdmins = await Admin.find({ role: 'sub_admin' })
         .select('-password')
         .populate('parentAdminId', 'name email')
@@ -216,9 +216,9 @@ async function deleteAdmin(req, res) {
     const requesterRole = req.userRole;
     const { id } = req.params;
 
-    // Only main admin can delete
-    if (requesterRole !== 'main_admin') {
-      return res.status(403).json({ error: 'forbidden - main admin access required' });
+    // Only main admin and managers can delete
+    if (requesterRole !== 'main_admin' && requesterRole !== 'manager') {
+      return res.status(403).json({ error: 'forbidden - main admin or manager access required' });
     }
 
     // Cannot delete yourself
@@ -233,9 +233,9 @@ async function deleteAdmin(req, res) {
       return res.status(404).json({ error: 'admin not found' });
     }
 
-    // Cannot delete main admin
-    if (targetAdmin.role === 'main_admin') {
-      return res.status(400).json({ error: 'cannot delete main admin accounts' });
+    // Cannot delete main admin or managers
+    if (targetAdmin.role === 'main_admin' || targetAdmin.role === 'manager') {
+      return res.status(400).json({ error: 'cannot delete main admin or manager accounts' });
     }
 
     // Delete the admin

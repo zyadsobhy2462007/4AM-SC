@@ -59,7 +59,7 @@ const adminSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['main_admin', 'sub_admin'],
+    enum: ['main_admin', 'sub_admin', 'manager'],
     default: 'sub_admin'
   },
   parentAdminId: {
@@ -106,6 +106,56 @@ adminSchema.methods.toJSON = function() {
 
 const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema);
 
+// Task Schema for Manager-to-Manager Assignments
+const taskSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String,
+    default: null
+  },
+  assignedTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    required: true
+  },
+  assignedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Admin',
+    required: true
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'in_progress', 'completed'],
+    default: 'pending'
+  },
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high'],
+    default: 'medium'
+  },
+  week_start: {
+    type: Date,
+    default: null
+  },
+  completed_at: {
+    type: Date,
+    default: null
+  }
+}, {
+  timestamps: true
+});
+
+// Indexes for faster queries
+taskSchema.index({ assignedTo: 1 });
+taskSchema.index({ assignedBy: 1 });
+taskSchema.index({ status: 1 });
+taskSchema.index({ week_start: 1 });
+
+const Task = mongoose.models.Task || mongoose.model('Task', taskSchema);
+
 // Initialize MongoDB connection
 async function initMongoDB() {
   try {
@@ -138,5 +188,6 @@ module.exports = {
   connectMongoDB,
   initMongoDB,
   Admin,
+  Task,
   mongoose
 };
