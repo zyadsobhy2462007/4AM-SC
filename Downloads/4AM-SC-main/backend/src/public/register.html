@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Register</title><link rel="stylesheet" href="/main.css"/><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"/></head>
+<body>
+  <div class="form-container">
+    <h2 id="title">Register</h2>
+    <label id="lbl-name">Name</label>
+    <input id="name" type="text" />
+    <label id="lbl-email">Email</label>
+    <input id="email" type="email" />
+    <label id="lbl-password">Password</label>
+    <input id="password" type="password" />
+    <button id="btn-register" class="btn">Register</button>
+    <p style="margin-top:12px"> <a href="/login.html" id="to-login">Login</a></p>
+  </div>
+<script src="/lang.js"></script>
+<script>
+  const lang = localStorage.getItem('site_lang') || 'en';
+  const L = LANG[lang] || LANG.en;
+  document.getElementById('title').innerText = L.register;
+  document.getElementById('lbl-name').innerText = L.name;
+  document.getElementById('lbl-email').innerText = L.email;
+  document.getElementById('lbl-password').innerText = L.password;
+  document.getElementById('btn-register').innerText = L.register;
+  document.getElementById('to-login').innerText = L.login;
+
+  document.getElementById('btn-register').addEventListener('click', async ()=>{
+    const name = document.getElementById('name').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    try {
+      const res = await fetch('/api/auth/register', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,password})});
+      const j = await res.json();
+      if (!res.ok) return alert(j.error || 'Register failed');
+      localStorage.setItem('token', j.token);
+      localStorage.setItem('user_name', j.user.name || j.user.email);
+      window.location.href = '/dashboard.html';
+    } catch (err) { console.error(err); alert('Network error'); }
+  });
+</script>
+</body>
+</html>

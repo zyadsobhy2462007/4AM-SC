@@ -1,0 +1,12 @@
+body{font-family: Arial, Helvetica, sans-serif;background:linear-gradient(180deg,#0f172a,#0b1220);color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.lang-container{background:rgba(255,255,255,0.03);padding:30px;border-radius:12px;text-align:center;box-shadow:0 8px 30px rgba(2,6,23,0.6);width:90%;max-width:420px}
+.lang-buttons{display:flex;gap:12px;justify-content:center;margin-top:18px}
+.lang-btn{padding:12px 18px;border-radius:8px;border:none;background:#111827;color:#f8fafc;cursor:pointer;font-weight:600}
+.lang-btn:hover{opacity:0.9}
+.form-container{max-width:420px;margin:40px auto;padding:20px;background:rgba(255,255,255,0.02);border-radius:10px}
+label{display:block;margin-bottom:6px}
+input{width:100%;padding:10px;margin-bottom:12px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#fff}
+.btn{padding:10px 14px;border-radius:8px;border:none;background:#111827;color:#fff;cursor:pointer}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px}
+.container{padding:20px}
+.card{background:rgba(255,255,255,0.02);padding:16px;border-radius:8px}
